@@ -1,4 +1,4 @@
-# [为Android开发者提供的Flutter文档：（译）](https://flutter.dev/docs/get-started/flutter-for/android-devs)
+# [（译）为Android开发者提供的Flutter文档：](https://flutter.dev/docs/get-started/flutter-for/android-devs)
 
 本文档适用于期望使用现有Android相关知识的Android开发者使用flutter构建移动应用程序。如果您了解Android框架的基础知识，那么您可以将此文档用作Flutter开发的快速入门。
 
