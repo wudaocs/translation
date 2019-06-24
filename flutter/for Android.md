@@ -1,4 +1,4 @@
-# [为Android开发者提供的Flutter文档](https://flutter.dev/docs/get-started/flutter-for/android-devs)
+# [为Android开发者提供的Flutter文档：（译）](https://flutter.dev/docs/get-started/flutter-for/android-devs)
 
 本文档适用于期望使用现有Android相关知识的Android开发者使用flutter构建移动应用程序。如果您了解Android框架的基础知识，那么您可以将此文档用作Flutter开发的快速入门。
 
@@ -271,6 +271,90 @@ class _MyFadeTest extends State<MyFadeTest> with TickerProviderStateMixin {
       ),
     );
   }
+}
+```
+有关更多信息，请参阅 [动画和动作小部件](https://flutter.dev/docs/development/ui/widgets/animation)，[动画教程](https://flutter.dev/docs/development/ui/animations/tutorial)和[动画概述](https://flutter.dev/docs/development/ui/animations)。
+
+### 我如何使用`Canvas`绘画/绘画？
+在Android中，您可以使用`Canvas`和`Drawable`s在屏幕上绘制图像和形状。Flutter也有类似的`Canvas`API，因为它基于相同的低级渲染引擎Skia。因此，对于Android开发人员来说，在Flutter中绘制到画布是一项非常熟悉的任务。
+
+Flutter有两个类可以帮助你绘制到画布：`CustomPaint` 并且`CustomPainter`，后者实现了绘制到画布的算法。
+
+要学习如何在Flutter中实现`签名画家`，请参阅Collin在[StackOverflow](https://stackoverflow.com/questions/46241071/create-signature-area-for-mobile-app-in-dart-flutter)上的答案 。
+
+```java
+import 'package:flutter/material.dart';
+
+void main() => runApp(MaterialApp(home: DemoApp()));
+
+class DemoApp extends StatelessWidget {
+  Widget build(BuildContext context) => Scaffold(body: Signature());
+}
+
+class Signature extends StatefulWidget {
+  SignatureState createState() => SignatureState();
+}
+
+class SignatureState extends State<Signature> {
+  List<Offset> _points = <Offset>[];
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onPanUpdate: (DragUpdateDetails details) {
+        setState(() {
+          RenderBox referenceBox = context.findRenderObject();
+          Offset localPosition =
+          referenceBox.globalToLocal(details.globalPosition);
+          _points = List.from(_points)..add(localPosition);
+        });
+      },
+      onPanEnd: (DragEndDetails details) => _points.add(null),
+      child: CustomPaint(painter: SignaturePainter(_points), size: Size.infinite),
+    );
+  }
+}
+
+class SignaturePainter extends CustomPainter {
+  SignaturePainter(this.points);
+  final List<Offset> points;
+  void paint(Canvas canvas, Size size) {
+    var paint = Paint()
+      ..color = Colors.black
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 5.0;
+    for (int i = 0; i < points.length - 1; i++) {
+      if (points[i] != null && points[i + 1] != null)
+        canvas.drawLine(points[i], points[i + 1], paint);
+    }
+  }
+  bool shouldRepaint(SignaturePainter other) => other.points != points;
+}
+```
+
+### 如何构建自定义小部件？
+在Android中，您通常将View子类化，或使用预先存在的视图来覆盖和实现实现所需行为的方法。在Flutter中，通过[组合](https://flutter.dev/docs/resources/technical-overview#everythings-a-widget)较小的小部件（而不是扩展它们）来构建自定义小部件。它有点类似于在Android中实现自定义ViewGroup，其中所有构建块都已存在，但您提供了不同的行为 - 例如，自定义布局逻辑。
+
+例如，你如何构建一个在构造函数中带有标签的`CustomButton`?创建一个CustomButton，用于组成带标签的`RaisedButton`而不是通过扩展`RaisedButton`:
+
+```java
+class CustomButton extends StatelessWidget {
+  final String label;
+
+  CustomButton(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return RaisedButton(onPressed: () {}, child: Text(label));
+  }
+}
+```
+然后使用`CustomButton`，就像使用任何其他Flutter小部件一样：
+
+```java
+@override
+Widget build(BuildContext context) {
+  return Center(
+    child: CustomButton("Hello"),
+  );
 }
 ```
 
