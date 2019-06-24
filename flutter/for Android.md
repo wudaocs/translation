@@ -1,4 +1,4 @@
-# 为Android开发者提供的Flutter文档
+# [为Android开发者提供的Flutter文档](https://flutter.dev/docs/get-started/flutter-for/android-devs)
 
 本文档适用于期望使用现有Android相关知识的Android开发者使用flutter构建移动应用程序。如果您了解Android框架的基础知识，那么您可以将此文档用作Flutter开发的快速入门。
 
@@ -6,9 +6,9 @@
 
 本文档与食谱相似，通过翻看和查询可以找到与您的需求最相关的问题。
 
-## 视图
+## [视图](https://flutter.dev/docs/get-started/flutter-for/android-devs#views)
 ### 在Flutter中什么相当与一个`View`(视图)？
-在Android中，`View`(视图)是屏幕上显示的所有内容的基础。按钮，工具栏和输入，一切都是视图。在Flutter中，与View粗略等价的就是`widget`(窗口小组件)。`Widgets`并不完全映射到Android视图，但是当您熟悉Flutter的工作方式时，您可以将它们视为“==声明和构建UI的方式==”。
+在Android中，`View`(视图)是屏幕上显示的所有内容的基础。按钮，工具栏和输入，一切都是视图。在Flutter中，与View粗略等价的就是`widget`(窗口小组件)。`Widget`s并不完全映射到Android视图，但是当您熟悉Flutter的工作方式时，您可以将它们视为“==声明和构建UI的方式==”。
 
 但是，这些与View有一些区别。首先，widgets具有不同的生命周期：它们是不可变的，只有在需要改变之前才存在。每当widgets或其state发生变化时，Flutter的框架都会创建一个新的widget树。相比之下，Android视图被绘制一次，并且在调用invalidate之前不会重绘。
 
@@ -17,7 +17,17 @@ Flutter 的组件很轻量级，部分原因就是因为他们的不可变性。
 
 Flutter 包含[Material Components](https://material.io/develop/flutter)库，这些是实现 [Material Design guidelines](https://material.io/design) （材料设计准则）的小部件。[Material Design`材料设计`]([https://baike.baidu.com/item/Material%20Design](https://baike.baidu.com/item/Material%20Design) ) 是一个灵活的设计系统，适用于所有平台，包括iOS。
 
-但Flutter具有足够的灵活性和表现力，可以实现任何设计语言。例如，在iOS上，您可以使用[Cupertino小部件](https://flutter.dev/docs/development/ui/widgets/cupertino) 来生成看起来像[Apple的iOS设计语言](https://developer.apple.com/design/resources/)的界面 。
+但Flutter具有足够的灵活性和表现力，可以实现任何设计语言。例如，在iOS上，您可以使用[Cupertino小部件](https://flutter.dev/docs/development/ui/widgets/cupertino) 来生成看起来像[Apple的iOS设计语言](https://developer.apple.com/design/resources/)的界面 。
 
+### 我们应该如何更新`Widget`s?
+在Android中，您可以通过直接更改视图来更新视图。但是，在Flutter中，`Widget`s是不可变的并且不会直接更新，而是必须使用窗口小部件的状态。
+
+这就是`Stateful` 和 `Stateless` 小部件的概念来源。A `StatelessWidget`听起来就像是一个没有状态信息的小部件。
+
+当您描述的用户界面部分不依赖于对象中的配置信息以外的任何内容时，`StatelessWidgets`非常有用。
+
+例如，在Android中，这类似于放置一个`ImageView`作为你的logo。这个logo在运行时不会进行改变，所以此时在Flutter中我们需要使用`StatelessWidget`。
+
+如果你想基于进行的HTTP呼叫或用户交互后收到的数据动态更改UI，那么你必须使用`StatefulWidget`并且告诉Flutter框架该窗口小部件`State` 已更新，以便它可以更新该窗口小部件。
 
 
