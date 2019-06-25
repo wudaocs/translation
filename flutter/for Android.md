@@ -358,6 +358,197 @@ Widget build(BuildContext context) {
 }
 ```
 
+## [意图](https://flutter.dev/docs/get-started/flutter-for/android-devs#what-is-the-equivalent-of-an-intent-in-flutter)
+## Flutter 中什么等价于Intent？
+在Android中，`Intent`s 有两个主要用例：在Activities之间导航，以及与组件通信。另一方面，另一方面，Flutter没有意图的概念，尽管你仍然可以通过原生集成（使用[插件](https://pub.dev/packages/android_intent)）启动意图。
+
+Flutter 实际上没有直接相当于activities 和 fragments，相反，在Flutter中，您可以使用导航器和路径在屏幕之间导航，所有这些都在同一个`Activity`中。
+
+`Route(路由)` 是应用程序的“屏幕”或“页面”的抽象化，`Navigator（导航）`是管理路径的小部件。一个路径粗略映射到一个`Activity`, 但它没有等同的含义。导航器可以推送和弹出路径用以在屏幕之间移动。导航器的工作方式类似于堆栈，您可以``push()`您想要导航到的新路线，并且当您想要“返回”时可以从中 `pop()`路线。
+
+在Android中，您在应用程序内声明您的activities `AndroidManifest.xml`。
+
+在Flutter中，您可以在页面之间导航：
+* 指定`Map`路径名称。（MaterialApp）
+* 直接导航到路线。（WidgetApp）
+
+以下示例构建一个Map。
+
+```java
+void main() {
+  runApp(MaterialApp(
+    home: MyAppHome(), // 用 '/' 变成路由名称
+    routes: <String, WidgetBuilder> {
+      '/a': (BuildContext context) => MyPage(title: 'page A'),
+      '/b': (BuildContext context) => MyPage(title: 'page B'),
+      '/c': (BuildContext context) => MyPage(title: 'page C'),
+    },
+  ));
+}
+```
+
+通过`push`（推送）一个路由名称到`Navigator`导航器导航一个路径。
+
+```java
+Navigator.of(context).pushNamed('/b');
+```
+
+`Intents`的另一个关键用例是调用外部组件，如`Camera`或`File picker`。因此，您需要创一个混合原生平台（或使用[现有插件](https://pub.dev/flutter/)）
+
+要了解如何构建混合原生平台，请参阅 [开发包和插件](https://flutter.dev/docs/development/packages-and-plugins/developing-packages)。
+
+### 如何在Flutter中处理来自外部应用程序的传入意图？
+通过直接与Android层交互并请求共享的数据，Flutter可以处理来自Android的传入意图。
+
+以下示例在运行我们的Flutter代码的原生页面上注册文本共享意图过滤器，所以其他应用可以与我们的Flutter应用分享文字。
+
+基本流程意味着我们首先处理Android原生端的共享文本数据（在我们的`Activity`中），然后等到Flutter请求数据使用`MethodChannel`提供它。
+
+首先，在`AndroidManifest.xml`中注册所有意图的intent过滤器：
+
+```java
+<activity
+  android:name=".MainActivity"
+  android:launchMode="singleTop"
+  android:theme="@style/LaunchTheme"
+  android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection"
+  android:hardwareAccelerated="true"
+  android:windowSoftInputMode="adjustResize">
+  <!-- ... -->
+  <intent-filter>
+    <action android:name="android.intent.action.SEND" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <data android:mimeType="text/plain" />
+  </intent-filter>
+</activity>
+```
+
+然后在MainActivity中处理intent，提取从intent共享的文本，并保持它。当Flutter准备好处理时，它会使用平台通道请求数据，并从原生端发送：
+
+```java
+package com.example.shared;
+
+import android.content.Intent;
+import android.os.Bundle;
+
+import java.nio.ByteBuffer;
+
+import io.flutter.app.FlutterActivity;
+import io.flutter.plugin.common.ActivityLifecycleListener;
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
+import io.flutter.plugins.GeneratedPluginRegistrant;
+
+public class MainActivity extends FlutterActivity {
+
+  private String sharedText;
+
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    GeneratedPluginRegistrant.registerWith(this);
+    Intent intent = getIntent();
+    String action = intent.getAction();
+    String type = intent.getType();
+
+    if (Intent.ACTION_SEND.equals(action) && type != null) {
+      if ("text/plain".equals(type)) {
+        handleSendText(intent); //处理正在发送的文本
+      }
+    }
+
+    new MethodChannel(getFlutterView(), "app.channel.shared.data").setMethodCallHandler(
+      new MethodCallHandler() {
+        @Override
+        public void onMethodCall(MethodCall call, MethodChannel.Result result) {
+          if (call.method.contentEquals("getSharedText")) {
+            result.success(sharedText);
+            sharedText = null;
+          }
+        }
+      });
+  }
+
+  void handleSendText(Intent intent) {
+    sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
+  }
+}
+```
+
+之后，在渲染窗口小部件时请求Flutter端的数据：
+
+```java
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+void main() {
+  runApp(SampleApp());
+}
+
+class SampleApp extends StatelessWidget {
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sample Shared App Handler',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: SampleAppPage(),
+    );
+  }
+}
+
+class SampleAppPage extends StatefulWidget {
+  SampleAppPage({Key key}) : super(key: key);
+
+  @override
+  _SampleAppPageState createState() => _SampleAppPageState();
+}
+
+class _SampleAppPageState extends State<SampleAppPage> {
+  static const platform = const MethodChannel('app.channel.shared.data');
+  String dataShared = "No data";
+
+  @override
+  void initState() {
+    super.initState();
+    getSharedText();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(body: Center(child: Text(dataShared)));
+  }
+
+  getSharedText() async {
+    var sharedData = await platform.invokeMethod("getSharedText");
+    if (sharedData != null) {
+      setState(() {
+        dataShared = sharedData;
+      });
+    }
+  }
+}
+```
+
+### Flutter中什么相当与`startActivityForResult()`?
+`Navigator`类处理Flutter中的路由并用于从您在堆栈上推送的路径返回结果。这是通过`push()` 后等待未来（`Future`）的返回来完成的。
+
+例如，要启动允许用户选择其位置的位置路线，您可以执行以下操作：
+```java
+Map coordinates = await Navigator.of(context).pushNamed('/location');
+```
+
+然后，在您的位置路线内，一旦用户选择了他们的位置，您就可以`pop(弹出)`结果堆信息：
+```java
+Navigator.of(context).pop({"lat":43.821757,"long":-79.226392});
+```
+
+
+
+
 
 
 
