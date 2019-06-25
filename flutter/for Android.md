@@ -546,10 +546,412 @@ Map coordinates = await Navigator.of(context).pushNamed('/location');
 Navigator.of(context).pop({"lat":43.821757,"long":-79.226392});
 ```
 
+## [Async UI](https://flutter.dev/docs/get-started/flutter-for/android-devs#what-is-the-equivalent-of-runonuithread-in-flutter)
+### `runOnUiThread()`在Flutter中相当于什么？
+Dart有一个单线程执行模型，支持`Isolate`s（在另一个线程上运行Dart代码的方法），事件循环和异步编程。除非你产生一个`Isolate`，否则你的Dart代码会在主UI线程中运行并由事件循环驱动。Flutter的事件循环等同于Android的主要`Looper`- 也就是说，`Looper`它附加到主线程。
 
+Dart的单线程模型并不意味着您需要将所有内容作为阻塞操作运行从而导致UI冻结。与要求您始终保持主线程空闲的Android不同，在Flutter中，使用Dart语言提供的异步工具（例如 `async`/ `await`）来执行异步工作。如果你在C＃，Javascript中使用它，或者你已经使用过Kotlin的协程，你可能熟悉`async`/ `await`范例。
 
+例如，您可以运行网络代码，使用async / await并让Dart完成繁重的任务而不会导致UI挂起：
 
+```java
+loadData() async {
+  String dataURL = "https://jsonplaceholder.typicode.com/posts";
+  http.Response response = await http.get(dataURL);
+  setState(() {
+    widgets = json.decode(response.body);
+  });
+}
+```
 
+一旦网络请求完成，通过调用`setState()`触发窗口小部件子树的重建并更新数据并更新UI。
+以下示例异步加载数据并将其显示在`ListView`：
+
+```java
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+void main() {
+  runApp(SampleApp());
+}
+
+class SampleApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sample App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: SampleAppPage(),
+    );
+  }
+}
+
+class SampleAppPage extends StatefulWidget {
+  SampleAppPage({Key key}) : super(key: key);
+
+  @override
+  _SampleAppPageState createState() => _SampleAppPageState();
+}
+
+class _SampleAppPageState extends State<SampleAppPage> {
+  List widgets = [];
+
+  @override
+  void initState() {
+    super.initState();
+
+    loadData();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Sample App"),
+      ),
+      body: ListView.builder(
+          itemCount: widgets.length,
+          itemBuilder: (BuildContext context, int position) {
+            return getRow(position);
+          }));
+  }
+
+  Widget getRow(int i) {
+    return Padding(
+      padding: EdgeInsets.all(10.0),
+      child: Text("Row ${widgets[i]["title"]}")
+    );
+  }
+
+  loadData() async {
+    String dataURL = "https://jsonplaceholder.typicode.com/posts";
+    http.Response response = await http.get(dataURL);
+    setState(() {
+      widgets = json.decode(response.body);
+    });
+  }
+}
+```
+
+有关在后台进行工作的详细信息，以及Flutter与Android的不同之处，请参阅下一节。
+
+### 如何将工作转移到后台线程？
+在Android中，当您想要访问网络资源时，通常会转移到后台线程并执行工作，以便不阻止主线程，并避免ANR。例如，您可能正在使用 `AsyncTask`， `LiveData`， `IntentService`，`JobScheduler` job或RxJava管道以及适用于后台线程的调度程序。
+
+由于Flutter是单线程并运行事件循环（如Node.js），因此您不必担心线程管理或生成后台线程。如果您正在进行I / O绑定工作，例如磁盘访问或网络调用，那么您可以安全地使用`async` / `await`，并且您已完成设置。另一方面，如果你需要进行计算密集型工作来保持CPU繁忙，你需要将其移动到一个`Isolate`以避免阻塞事件循环，就像你在Android中的主线程中保留任何类型的工作一样。
+
+对于I / O绑定工作，将函数声明为`async`函数，并`await`在函数内部执行长时间运行的任务：
+
+```java
+loadData() async {
+  String dataURL = "https://jsonplaceholder.typicode.com/posts";
+  http.Response response = await http.get(dataURL);
+  setState(() {
+    widgets = json.decode(response.body);
+  });
+}
+```
+
+这就是您通常进行网络或数据库调用的方式，这两种方式都是I / O操作。
+
+在Android上，当您扩展时`AsyncTask`，通常会覆盖3个方法 `onPreExecute()`，`doInBackground()`和`onPostExecute()`。在Flutter中没有等价物，因为你`await`有一个长时间运行的功能，而Dart的事件循环负责其余的事情。
+
+但是，有时您可能正在处理大量数据并且挂起UI。在Flutter中，使用`Isolate`s来利用多个CPU内核来执行长时间运行或计算密集型任务。
+
+`Isolates`是单独的执行线程,不与主执行内存堆共享任何内存。这意味着您无法从主线程访问变量，或者通过调用`setState()`来更新UI。与Android线程不同，`Isolates`与其名称相同，并且不能共享内存（例如，以静态字段的形式）。
+
+以下示例在一个简单的`isolate`中显示了如何将数据共享回主线程以更新UI。
+
+```java
+loadData() async {
+  ReceivePort receivePort = ReceivePort();
+  await Isolate.spawn(dataLoader, receivePort.sendPort);
+
+  // 发送其SendPort作为第一条消息
+  SendPort sendPort = await receivePort.first;
+
+  List msg = await sendReceive(sendPort, "https://jsonplaceholder.typicode.com/posts");
+
+  setState(() {
+    widgets = msg;
+  });
+}
+
+// isolate 的入口点
+static dataLoader(SendPort sendPort) async {
+  //为传入消息打开ReceivePort.
+  ReceivePort port = ReceivePort();
+
+  // 通知任何其他isolates此isolates侦听的端口。
+  sendPort.send(port.sendPort);
+
+  await for (var msg in port) {
+    String data = msg[0];
+    SendPort replyTo = msg[1];
+
+    String dataURL = data;
+    http.Response response = await http.get(dataURL);
+    // JSON来解析
+    replyTo.send(json.decode(response.body));
+  }
+}
+
+Future sendReceive(SendPort port, msg) {
+  ReceivePort response = ReceivePort();
+  port.send([msg, response.sendPort]);
+  return response.first;
+}
+```
+
+这里的 `dataLoader()`是`Isolate`，它在自己独立的执行线程中运行。在`Isolate`中，您可以执行更多CPU密集型处理（例如，解析大型JSON），或执行计算密集型数学，例如加密或信号处理。
+
+您可以运行以下完整示例：
+
+```java
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:async';
+import 'dart:isolate';
+
+void main() {
+  runApp(SampleApp());
+}
+
+class SampleApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sample App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: SampleAppPage(),
+    );
+  }
+}
+
+class SampleAppPage extends StatefulWidget {
+  SampleAppPage({Key key}) : super(key: key);
+
+  @override
+  _SampleAppPageState createState() => _SampleAppPageState();
+}
+
+class _SampleAppPageState extends State<SampleAppPage> {
+  List widgets = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadData();
+  }
+
+  showLoadingDialog() {
+    if (widgets.length == 0) {
+      return true;
+    }
+
+    return false;
+  }
+
+  getBody() {
+    if (showLoadingDialog()) {
+      return getProgressDialog();
+    } else {
+      return getListView();
+    }
+  }
+
+  getProgressDialog() {
+    return Center(child: CircularProgressIndicator());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          title: Text("Sample App"),
+        ),
+        body: getBody());
+  }
+
+  ListView getListView() => ListView.builder(
+      itemCount: widgets.length,
+      itemBuilder: (BuildContext context, int position) {
+        return getRow(position);
+      });
+
+  Widget getRow(int i) {
+    return Padding(padding: EdgeInsets.all(10.0), child: Text("Row ${widgets[i]["title"]}"));
+  }
+
+  loadData() async {
+    ReceivePort receivePort = ReceivePort();
+    await Isolate.spawn(dataLoader, receivePort.sendPort);
+
+    // isolate 将其SendPort作为第一个消息发送
+    SendPort sendPort = await receivePort.first;
+
+    List msg = await sendReceive(sendPort, "https://jsonplaceholder.typicode.com/posts");
+
+    setState(() {
+      widgets = msg;
+    });
+  }
+
+  // the isolate 的入口
+  static dataLoader(SendPort sendPort) async {
+    // 打开ReceivePort以接收传入消息
+    ReceivePort port = ReceivePort();
+
+    // 通知其他 isolates 当前 isolate 监听的端口.
+    sendPort.send(port.sendPort);
+
+    await for (var msg in port) {
+      String data = msg[0];
+      SendPort replyTo = msg[1];
+
+      String dataURL = data;
+      http.Response response = await http.get(dataURL);
+      // 大量json解析
+      replyTo.send(json.decode(response.body));
+    }
+  }
+
+  Future sendReceive(SendPort port, msg) {
+    ReceivePort response = ReceivePort();
+    port.send([msg, response.sendPort]);
+    return response.first;
+  }
+}
+```
+
+### Flutter上什么相当于OkHttp？
+使用流行的[`http`软件包](https://pub.dev/packages/http)，在Flutter中进行网络调用很容易 。
+虽然http包没有OkHttp中的所有功能，但它抽象了你通常自己实现的大部分网络，使其成为一种简单的网络调用方式。
+
+要使用该`http`包，请将其添加到您的依赖项中`pubspec.yaml`：
+
+```yaml
+dependencies:
+  ...
+  http: ^0.11.3+16
+```
+
+要进行网络调用，在 `async`功能中调用 `await`修饰`http.get()`：
+
+```java
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+[...]
+  loadData() async {
+    String dataURL = "https://jsonplaceholder.typicode.com/posts";
+    http.Response response = await http.get(dataURL);
+    setState(() {
+      widgets = json.decode(response.body);
+    });
+  }
+}
+```
+
+### 如何显示长时间运行任务的进度？
+在Android中，您通常会`ProgressBar`在后台线程上执行长时间运行的任务时在UI中显示视图。
+
+在Flutter中，使用`ProgressIndicator`小部件。通过控制何时通过布尔标志呈现来以编程方式显示进度。告诉Flutter在长时间运行的任务开始之前更新其状态，并在结束后隐藏它。
+
+在以下示例中，构建函数分为三个不同的功能。如果`showLoadingDialog()`是`true`（当`widgets.length` == 0时）则渲染`ProgressIndicator`。否则，`ListView`使用从网络调用返回的数据进行渲染 。
+
+```java
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+void main() {
+  runApp(SampleApp());
+}
+
+class SampleApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Sample App',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: SampleAppPage(),
+    );
+  }
+}
+
+class SampleAppPage extends StatefulWidget {
+  SampleAppPage({Key key}) : super(key: key);
+
+  @override
+  _SampleAppPageState createState() => _SampleAppPageState();
+}
+
+class _SampleAppPageState extends State<SampleAppPage> {
+  List widgets = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadData();
+  }
+
+  showLoadingDialog() {
+    return widgets.length == 0;
+  }
+
+  getBody() {
+    if (showLoadingDialog()) {
+      return getProgressDialog();
+    } else {
+      return getListView();
+    }
+  }
+
+  getProgressDialog() {
+    return Center(child: CircularProgressIndicator());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          title: Text("Sample App"),
+        ),
+        body: getBody());
+  }
+
+  ListView getListView() => ListView.builder(
+      itemCount: widgets.length,
+      itemBuilder: (BuildContext context, int position) {
+        return getRow(position);
+      });
+
+  Widget getRow(int i) {
+    return Padding(padding: EdgeInsets.all(10.0), child: Text("Row ${widgets[i]["title"]}"));
+  }
+
+  loadData() async {
+    String dataURL = "https://jsonplaceholder.typicode.com/posts";
+    http.Response response = await http.get(dataURL);
+    setState(() {
+      widgets = json.decode(response.body);
+    });
+  }
+}
+```
 
 
 
